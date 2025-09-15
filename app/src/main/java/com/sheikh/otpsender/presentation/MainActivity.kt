@@ -1,4 +1,4 @@
-package com.sheikh.otpsender
+package com.sheikh.otpsender.presentation
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
