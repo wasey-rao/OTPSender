@@ -1,60 +1,80 @@
 package com.sheikh.otpsender.data.repository
 
+import android.content.Context
+import android.telephony.SmsManager
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import com.sheikh.otpsender.data.network.OtpApiService
+import com.sheikh.otpsender.data.network.dto.OtpPayload
+import com.sheikh.otpsender.data.source.ContactDataStore
+import com.sheikh.otpsender.domain.models.SmsMessageData
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import java.util.Date
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class OtpRepository @Inject constructor(
-    private val dataStore: DataStore<Preferences>
+    private val contactDataStore: ContactDataStore,
+    private val otpApiService: OtpApiService
 ) {
-    private object Keys {
-        val LAST_OTP = stringPreferencesKey("last_otp")
-        val CONTACTS = stringSetPreferencesKey("contacts")
-    }
+    private val otpRegex = Regex("\\b\\d{4,8}\\b")
 
-    val lastOtp: Flow<String> = dataStore.data.map { prefs ->
-        prefs[Keys.LAST_OTP] ?: ""
-    }
+    suspend fun onPotentialOtpReceived(smsMessageData: SmsMessageData) {
+        val forwardingEnabled = contactDataStore.forwardingEnabledFlow.first()
+        val isSmsForwardingEnabled = contactDataStore.isSmsForwardingEnabledFlow.first()
+        val isServerForwardingEnabled = contactDataStore.isServerForwardingEnabledFlow.first()
+        if (!forwardingEnabled) return
 
-    val contacts: Flow<Set<String>> = dataStore.data.map { prefs ->
-        prefs[Keys.CONTACTS] ?: emptySet()
-    }
+        val otp = otpRegex.find(smsMessageData.body)?.value ?: return
+        Log.d("OtpRepository", "Detected OTP: $otp from ${smsMessageData.sender}")
 
-    suspend fun onOtpDetected(otp: String, source: String, message: String) {
+        // Save last OTP
+        contactDataStore.saveLastOtp(otp)
 
+        if (isSmsForwardingEnabled) {
+            val contacts = contactDataStore.contactsFlow.first()
+            sendOtpToContacts(otp, contacts)
+        }
 
-        // Forward to selected contacts
-        val contacts = dataStore.data.map { prefs ->
-            prefs[stringSetPreferencesKey("contacts")] ?: emptySet()
-        }.first()
-
-    }
-
-    suspend fun saveOtp(otp: String) {
-        dataStore.edit { prefs ->
-            prefs[Keys.LAST_OTP] = otp
+        if (isServerForwardingEnabled) {
+            sendOtpToServer(smsMessageData.sender, otp)
         }
     }
 
-    suspend fun addContact(contact: String) {
-        dataStore.edit { prefs ->
-            val set = prefs[Keys.CONTACTS]?.toMutableSet() ?: mutableSetOf()
-            set.add(contact)
-            prefs[Keys.CONTACTS] = set
+    private fun sendOtpToContacts(otp: String, contacts: Set<String>) {
+        val smsManager = SmsManager.getDefault()
+        contacts.forEach { contact ->
+            smsManager.sendTextMessage(contact, null, "Forwarded OTP: $otp", null, null)
         }
     }
 
-    suspend fun removeContact(contact: String) {
-        dataStore.edit { prefs ->
-            val set = prefs[Keys.CONTACTS]?.toMutableSet() ?: mutableSetOf()
-            set.remove(contact)
-            prefs[Keys.CONTACTS] = set
+    private suspend fun sendOtpToServer(sender: String, otp: String) {
+        withContext(Dispatchers.IO) {
+            try {
+                val response = otpApiService.sendOtp(
+                    OtpPayload(
+                        otp = otp,
+                        sender = sender,
+                        timestamp = Date().time.toString()
+                    )
+                )
+                if (response.isSuccessful) {
+                    Log.d("OtpRepository", "OTP sent to server successfully")
+                } else {
+                    Log.e("OtpRepository", "Server error: ${response.code()}")
+                }
+            } catch (e: Exception) {
+                Log.e("OtpRepository", "Error sending OTP to server: ${e.message}")
+            }
         }
     }
 }

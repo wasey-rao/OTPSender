@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.dataStoreFile
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import com.sheikh.otpsender.data.source.ContactDataStore
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -23,4 +24,9 @@ object DataStoreModule {
             produceFile = { context.dataStoreFile("otp_forwarder_prefs.preferences_pb") }
         )
     }
-}
+
+    @Provides
+    @Singleton
+    fun provideContactDataStore(@ApplicationContext context: Context): ContactDataStore {
+        return ContactDataStore(context)
+    }}

@@ -68,4 +68,9 @@ dependencies {
 
     //Datastore
     implementation(libs.android.datastore)
+
+    // Retrofit
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.gson.converter)
+    implementation(libs.logging.interceptor)
 }

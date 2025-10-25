@@ -1,12 +1,16 @@
 package com.sheikh.otpsender
 
-import android.app.Notification
+import android.annotation.SuppressLint
+import android.content.Context
+import android.net.Uri
+import android.provider.ContactsContract
 import android.provider.Telephony
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import android.telephony.SmsManager
 import android.util.Log
 import com.sheikh.otpsender.data.repository.OtpRepository
+import com.sheikh.otpsender.data.source.ContactDataStore
+import com.sheikh.otpsender.domain.models.SmsMessageData
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,37 +21,87 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class OtpNotificationListener : NotificationListenerService() {
 
-    @Inject
-    lateinit var otpRepository: OtpRepository  // or use your own class to forward SMS
+    @Inject lateinit var otpRepository: OtpRepository
+    @Inject lateinit var contactDataStore: ContactDataStore
 
-    private val otpRegex = Regex("\\b\\d{4,8}\\b") // 4–8 digit OTPs
+    private var lastTriggerTime = 0L
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        Log.d("OtpService", "onNotificationPosted: ")
-        val notification = sbn.notification ?: return
-        val extras = notification.extras
-        val smsPackageName = Telephony.Sms.getDefaultSmsPackage(this )
-        val title = extras.getString(Notification.EXTRA_TITLE)
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+        val now = System.currentTimeMillis()
+        if (now - lastTriggerTime < 3000) return // skip if triggered too soon
+        lastTriggerTime = now
 
-        if (!text.isNullOrEmpty() && isLikelyOtpNotification(title, text)) {
-            val otp = otpRegex.find(text)?.value
-            if (otp != null) {
-                Log.d("OtpService", "OTP found: $otp from $title")
+        val packageName = sbn.packageName
+        val defaultSmsApp = Telephony.Sms.getDefaultSmsPackage(applicationContext)
 
-                CoroutineScope(Dispatchers.IO).launch {
-                    // Save to log & forward
-                    otpRepository.saveOtp(otp)
-                    otpRepository.contacts.first().forEach { number ->
-                        SmsManager.getDefault().sendTextMessage(number, null, "OTP: $otp", null, null)
-                    }
+        if (packageName == defaultSmsApp) {
+            CoroutineScope(Dispatchers.IO).launch {
+                val lastProcessedDate = contactDataStore.lastProcessedDateFlow.first()
+                val latestSms = getLatestIncomingSms(applicationContext, lastProcessedDate)
+                latestSms?.let { smsMessageData ->
+                    otpRepository.onPotentialOtpReceived(smsMessageData)
                 }
             }
         }
     }
 
-    private fun isLikelyOtpNotification(title: String?, message: String): Boolean {
-        val keywords = listOf("OTP", "code", "verification", "password")
-        return keywords.any { message.contains(it, ignoreCase = true) || title?.contains(it, true) == true }
+    private fun getLatestIncomingSms(context: Context, lastProcessedDate: Long): SmsMessageData? {
+        val projection = arrayOf(
+            Telephony.Sms._ID,
+            Telephony.Sms.ADDRESS,
+            Telephony.Sms.BODY,
+            Telephony.Sms.DATE
+        )
+
+        context.contentResolver.query(
+            Telephony.Sms.Inbox.CONTENT_URI,
+            projection,
+            "${Telephony.Sms.DATE} > ?",
+            arrayOf(lastProcessedDate.toString()),
+            "${Telephony.Sms.DATE} DESC LIMIT 1"
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val date = cursor.getLong(cursor.getColumnIndexOrThrow(Telephony.Sms.DATE))
+                val address = cursor.getString(cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS))
+                val body = cursor.getString(cursor.getColumnIndexOrThrow(Telephony.Sms.BODY))
+                val contactName = getContactNameFromNumber(context, address) ?: address
+                return SmsMessageData(
+                    sender = contactName,
+                    body = body,
+                    timestamp = date
+                ).also {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        contactDataStore.saveLastProcessedDate(date)
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    /**
+     * Helper to resolve contact name from number.
+     */
+    @SuppressLint("Range")
+    private fun getContactNameFromNumber(context: Context, number: String): String? {
+        val uri = Uri.withAppendedPath(
+            ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+            Uri.encode(number)
+        )
+
+        val cursor = context.contentResolver.query(
+            uri,
+            arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME),
+            null,
+            null,
+            null
+        )
+
+        cursor?.use {
+            if (it.moveToFirst()) {
+                return it.getString(it.getColumnIndex(ContactsContract.PhoneLookup.DISPLAY_NAME))
+            }
+        }
+        return null
     }
 }
