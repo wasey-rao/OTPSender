@@ -45,45 +45,7 @@ The following permissions are required for full functionality:
 <uses-permission android:name="android.permission.INTERNET" />
 
 
-⚠️ These must also be requested at runtime for Android 6.0 (API 23) and above.
-
-🏗️ Architecture Overview
-
-This project follows Clean Architecture and MVVM principles — separating responsibilities into well-defined layers for scalability, testability, and maintainability.
-
-otsender/
-├── data/
-│   ├── network/
-│   │   ├── dto/
-│   │   │   ├── OtpPayload.kt              # Data model for OTP API payload
-│   │   │   └── OTPApiService.kt           # Retrofit service interface
-│   │
-│   ├── repository/
-│   │   └── OtpRepository.kt               # Core business logic for OTP handling and forwarding
-│   │
-│   ├── source/
-│   │   └── dataStore.kt                   # DataStore for persisting user preferences (toggles)
-│
-├── di/
-│   ├── DataStoreModule.kt                 # Hilt module providing DataStore dependencies
-│   └── NetworkModule.kt                   # Hilt module for Retrofit and OkHttp setup
-│
-├── domain/
-│   └── models/
-│       └── SmsMessageData.kt              # Domain model for parsed SMS messages
-│
-├── presentation/
-│   ├── MainActivity.kt                    # Entry point and Compose host
-│   └── OtpViewModel.kt                    # ViewModel using Kotlin Flows to handle state and logic
-│
-├── ui/
-│   └── theme/
-│       ├── Color.kt                       # App color palette (dark green + charcoal gray)
-│       ├── Theme.kt                       # Jetpack Compose Material3 theme setup
-│       └── Type.kt                        # Typography definitions
-│
-├── OtpApplication.kt                      # Application class with Hilt initialization
-└── OtpNotificationListener.kt             # Notification service for reading incoming OTP messages
+⚠️ These must also be requested at runtime for Android 7.0 (API 24) and above.
 
 🧪 How It Works
 
@@ -105,7 +67,7 @@ Log Updated → The last OTP and sender appear on the app screen.
 
 Clone the repository:
 
-git clone https://github.com/yourusername/otp-forwarder.git
+git clone https://github.com/wasey-rao/OTPSender.git
 
 
 Open in Android Studio (Arctic Fox or newer).
