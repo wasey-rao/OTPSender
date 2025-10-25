@@ -9,6 +9,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
@@ -33,6 +34,10 @@ private val LightColorScheme = lightColorScheme(
     */
 )
 
+private val DarkGreen = Color(0xFF00695C)
+val Charcoal = Color(0xFF1C1C1C)
+private val LightText = Color(0xFFEEEEEE)
+
 @Composable
 fun OTPSenderTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -51,7 +56,14 @@ fun OTPSenderTheme(
     }
 
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = darkColorScheme(
+            primary = DarkGreen,
+            background = Charcoal,
+            surface = Charcoal,
+            onPrimary = LightText,
+            onBackground = LightText,
+            onSurface = LightText
+        ),
         typography = Typography,
         content = content
     )

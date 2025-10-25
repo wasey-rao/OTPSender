@@ -65,4 +65,7 @@ dependencies {
 
     //Play Services Auth
     implementation(libs.google.services.auth)
+
+    //Datastore
+    implementation(libs.android.datastore)
 }
